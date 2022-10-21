@@ -11,7 +11,7 @@ measurements for germany. The `radoflux` tool can be used to download the files 
 by this service, select rainfall for a list of geo-locations and feed this data to
 a [InfluxDB](https://github.com/influxdata/influxdb) time-series server.
 
-![screenshot showing data rendered by grafana](screenshot.jpg)
+![screenshot showing data rendered by grafana](screenshot.png)
 
 ## Configuration
 
