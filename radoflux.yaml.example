@@ -1,0 +1,35 @@
+---
+influxdb:
+  bucket: "default"
+  org: "My Organisation"
+  token: "abc"
+  url: "https://radoflux.myorg.org:9086"
+
+locations:
+  Pottenstein: 
+    lat: 49.77396
+    lon: 11.40738
+  Doos: 
+    lat: 49.81117
+    lon: 11.29638
+  Waischenfeld: 
+    lat: 49.84696
+    lon: 11.34624
+  Gößweinstein: 
+    lat: 49.76955
+    lon: 11.33730
+  Egloffstein: 
+    lat: 49.70227
+    lon: 11.25842
+  Obertrubach: 
+    lat: 49.69512
+    lon: 11.34853
+  Kleinziegenfeld: 
+    lat: 50.01892
+    lon: 11.20166
+  Streitberg: 
+    lat: 49.81051
+    lon: 11.22226
+  Weigelshofen: 
+    lat: 49.79016
+    lon: 11.09423

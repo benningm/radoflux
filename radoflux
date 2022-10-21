@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+
+from datetime import datetime, timezone, timedelta
+import urllib.request
+import wradlib as wrl
+from io import BytesIO
+import gzip
+import numpy as np
+import influxdb_client
+from influxdb_client.client.write_api import SYNCHRONOUS
+import yaml
+import argparse
+
+class RadolanRwFile:
+    def __init__(self, hours, minutes):
+        self.hours = hours
+        self.minutes = minutes
+        self.generate_url()
+        self.download()
+
+    def generate_url(self):
+        timestamp = datetime.now(timezone.utc) - timedelta(hours=self.hours, minutes=self.minutes)
+        timestr = timestamp.strftime("%y%m%d%H")
+        self.url = f"https://opendata.dwd.de/climate_environment/CDC/grids_germany/hourly/radolan/recent/bin/raa01-rw_10000-{timestr}50-dwd---bin.gz"
+
+    def download(self):
+        response = urllib.request.urlopen(self.url)
+        data = BytesIO(gzip.decompress(response.read()))
+        self.rwdata, self.rwattrs = wrl.io.read_radolan_composite(data)
+
+    def rado_xy2ij(self, x, y, x0 = -523.4622, y0 = -4658.645):
+        x_rel = x - x0
+        y_rel = y - y0
+
+        irow = np.round(y_rel).astype(int)
+        icol = np.round(x_rel).astype(int)
+
+        return irow, icol
+
+    def get_rain_rate(self, lon, lat):
+        xy = wrl.georef.rect.get_radolan_coords(lon, lat, trig=False)
+        row,col = self.rado_xy2ij(xy[0], xy[1])
+
+        return {
+            'timestamp': self.rwattrs['datetime'],
+            'rain_mm': self.rwdata[row][col]
+        }
+
+class Config:
+    def __init__(self, path):
+        with open(path, "r") as ymlfile:
+            self.config = yaml.safe_load(ymlfile)
+
+    @property
+    def locations(self):
+        return self.config['locations']
+
+    @property
+    def influxdb(self):
+        return self.config['influxdb']
+
+class GetRadolanApp:
+    def __init__(self):
+        self.parse_arguments()
+        self.config = Config(self.args.config)
+        self.locations = self.config.locations
+        self.init_influxdb()
+
+    def parse_arguments(self):
+        parser = argparse.ArgumentParser(description='feed radolan data into influxdb')
+        parser.add_argument('-c', '--config',
+                            default='get_radolan.yaml',
+                            help='path to configuration file')
+        parser.add_argument('-n', '--num-hours',
+                            type=int,
+                            default=1,
+                            help='number of hours to process')
+        self.args = parser.parse_args()
+
+    def init_influxdb(self):
+        self.influxdb = influxdb_client.InfluxDBClient(
+            url=self.config.influxdb['url'],
+            token=self.config.influxdb['token'],
+            org=self.config.influxdb['org']
+        )
+        self.write_api = self.influxdb.write_api(write_options=SYNCHRONOUS)
+
+    def write(self, record):
+        self.write_api.write(
+                bucket=self.config.influxdb['bucket'],
+                org=self.config.influxdb['org'],
+                record=record)
+
+    def run(self):
+        for hours in range(self.args.num_hours, 0, -1):
+            file = RadolanRwFile(hours, 20)
+            points = []
+            for name, coords in self.locations.items():
+                rain = file.get_rain_rate(
+                        coords['lon'],
+                        coords['lat'])
+                record = influxdb_client \
+                        .Point("Radolan_RW") \
+                        .tag("location", name) \
+                        .time(rain['timestamp']) \
+                        .field("rain_rate", rain['rain_mm'])
+                points.append(record)
+            self.write(points)
+
+if __name__ == "__main__":
+    GetRadolanApp().run()
